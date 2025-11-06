@@ -1,6 +1,5 @@
 import os
 import logging
-import json
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
@@ -8,23 +7,18 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
 # Состояния диалога
-COLLECTING_DATA, ANALYZING = range(2)
-
+COLLECTING_DATA = 1
 
 class InteractiveBusinessBot:
     def __init__(self, token):
         self.token = token
-        
         # Создаем папку data если её нет
         os.makedirs("data", exist_ok=True)
-        
         self.db = self._init_database()
         self.user_sessions = {}
 
@@ -34,38 +28,23 @@ class InteractiveBusinessBot:
             from database.json_db import JSONDatabase
             return JSONDatabase("data/database.json")
         except ImportError as e:
-            logger.warning(f"Не удалось импортировать JSONDatabase: {e}")
+            logger.warning(f"Database import failed: {e}")
             class DummyDB:
-                def add_parsed_source(self, data):
-                    logger.info(f"Заглушка DB: {data}")
+                def add_parsed_source(self, data): 
+                    logger.info(f"Data saved: {data}")
+                def search_trends(self, *args): 
+                    return []
             return DummyDB()
 
     def _init_agents(self):
-        """Инициализация агентов с правильными именами файлов"""
+        """Инициализация агентов"""
         try:
-            # Исправляем имена файлов согласно вашей структуре
             from agents.data_collector import DataCollectorAgent
-            from agents.data_analyzer import DataAnalyzerAgent  # data_analyses.py -> data_analyzer
+            from agents.data_analyzer import DataAnalyzerAgent
             return DataCollectorAgent, DataAnalyzerAgent
         except ImportError as e:
-            logger.error(f"Ошибка импорта агентов: {e}")
-            # Создаем заглушки для тестирования
-            class DataCollectorAgent:
-                def start_conversation(self):
-                    return "Расскажите о вашей бизнес-идее. В какой сфере вы планируете работать?"
-                
-                def process_user_input(self, user_input):
-                    # Заглушка для тестирования
-                    return "Какой у вас бюджет?", {"idea": user_input}
-            
-            class DataAnalyzerAgent:
-                def __init__(self, db):
-                    self.db = db
-                
-                def generate_advice(self, data):
-                    return f"Рекомендации для вашей идеи: {data.get('idea', 'не указана')}"
-            
-            return DataCollectorAgent, DataAnalyzerAgent
+            logger.error(f"Agents import failed: {e}")
+            raise
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Начало диалога - команда /start"""
@@ -242,7 +221,10 @@ class InteractiveBusinessBot:
             application.add_error_handler(self.error_handler)
 
             logger.info("🤖 Бот запущен на Render!")
-            application.run_polling(drop_pending_updates=True)
+            application.run_polling(
+                drop_pending_updates=True,
+                allowed_updates=Update.ALL_TYPES
+            )
 
         except Exception as e:
             logger.error(f"❌ Критическая ошибка запуска: {e}")
@@ -251,10 +233,12 @@ class InteractiveBusinessBot:
 
 def main():
     """Точка входа"""
+    # Для Render используем BOT_TOKEN
     BOT_TOKEN = os.getenv("BOT_TOKEN")
     
     if not BOT_TOKEN:
-        logger.error("❌ Ошибка: BOT_TOKEN не найден")
+        logger.error("❌ Ошибка: BOT_TOKEN не найден в переменных окружения")
+        logger.info("💡 Установите BOT_TOKEN в настройках Render")
         return
 
     bot = InteractiveBusinessBot(BOT_TOKEN)
