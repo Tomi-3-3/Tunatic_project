@@ -186,22 +186,32 @@ class InteractiveBusinessBot:
         """
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
-    async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик ошибок"""
         logger.error(f"Ошибка в боте: {context.error}")
-        try:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id if update else None,
-                text="❌ Произошла техническая ошибка. Попробуйте позже."
-            )
-        except Exception:
-            pass
+
+        # Проверяем, что update является объектом Update
+        if isinstance(update, Update) and update.message:
+            try:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="❌ Произошла техническая ошибка. Попробуйте позже."
+                )
+            except Exception:
+                pass
 
     def run(self):
         """Запуск бота"""
         try:
-            application = Application.builder().token(self.token).build()
+            # Создаем Application без использования Updater
+            application = (
+                Application.builder()
+                .token(self.token)
+                .concurrent_updates(True)
+                .build()
+            )
 
+            # Создаем ConversationHandler для управления диалогом
             conv_handler = ConversationHandler(
                 entry_points=[CommandHandler('start', self.start_command)],
                 states={
@@ -215,11 +225,15 @@ class InteractiveBusinessBot:
                 ]
             )
 
+            # Регистрируем обработчики
             application.add_handler(conv_handler)
             application.add_handler(CommandHandler('help', self.help_command))
             application.add_handler(CommandHandler('cancel', self.cancel_command))
+
+            # Добавляем обработчик ошибок
             application.add_error_handler(self.error_handler)
 
+            # Запускаем бота
             logger.info("🤖 Бот запущен на Render!")
             application.run_polling(
                 drop_pending_updates=True,
